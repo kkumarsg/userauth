@@ -1,10 +1,14 @@
 package com.auth.user.services;
 
+import com.auth.user.dtos.EmailFormat;
 import com.auth.user.models.Token;
 import com.auth.user.models.User;
 import com.auth.user.repositories.TokenRepository;
 import com.auth.user.repositories.UserRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +22,13 @@ public class UserService {
 
     @Autowired
     private UserRepository userRepository;
+
+    // create this bean and use it.
+    @Autowired
+    private KafkaTemplate<String, String> kafkaTemplate;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Autowired
     private TokenRepository tokenRepository;
@@ -39,7 +50,24 @@ public class UserService {
         user.setName(name);
         user.setHashedPassword(bCryptPasswordEncoder.encode(password));
 
+        // take the email id that for whom you want to send and put it in the kafka queue.
+        try {
+            kafkaTemplate.send("sendEmail", objectMapper.writeValueAsString(getMessage(user)));
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+
         return userRepository.save(user);
+    }
+
+    private EmailFormat getMessage(User user) {
+        EmailFormat message = new EmailFormat();
+        message.setTo(user.getEmail());
+        message.setContent("Successfully signed up");
+        message.setSubject("Sign up success ");
+        message.setFrom("keerthikumarsg@gmail.com");
+
+        return message;
     }
 
     public Token login(String email, String password) {
